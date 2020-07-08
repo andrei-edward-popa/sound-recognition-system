@@ -1,0 +1,29 @@
+#ifndef _STRUCTURES_H_
+#define _STRUCTURES_H_
+
+typedef uint8_t u8;
+typedef int16_t s16;
+typedef uint16_t u16;
+typedef int32_t s32;
+typedef uint32_t u32;
+typedef int64_t s64;
+typedef uint64_t u64;
+
+#define FFT_LEN 512
+#define HALF_FFT_LEN (FFT_LEN / 2)
+#define FRAME_LENGTH 480
+#define SAMPLE_RATE 16000
+#define DELTA 0.0000000001
+#define LOG_10_2 0.3010299957
+#define COLLECT_TIME (SAMPLE_RATE / FRAME_LENGTH / 2) // 480 ms
+#define SAD_THRESHOLD1 0.0000007
+#define SAD_THRESHOLD2 0.015
+#define MFCC_CONSTANT1 0.158113883
+#define MFCC_CONSTANT2 0.2236067977
+#define NUMBER_OF_FILTERS 40
+#define NUMBER_OF_CEPSTRALS 13
+#define ROLLOFF_RATIO 0.5
+#define ENTROPY_CUT 20
+#define PITCH_EP 0.04
+
+#endif

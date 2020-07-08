@@ -1,0 +1,383 @@
+#include "features.h"
+#include <stdio.h>
+
+extern const float32_t MFCC_Lifter[];
+extern const float32_t HammingWindow[];
+
+void compute_RealFastFourierTransformMagnitude_f32(arm_rfft_instance_f32* rfft_instance, float32_t* input_signal, u32 fft_len, float32_t* magnitude, float32_t* power_spectrum) {
+	arm_rfft_f32(rfft_instance, input_signal, magnitude);
+	arm_cmplx_mag_squared_f32(magnitude, power_spectrum, fft_len);
+	arm_cmplx_mag_f32(magnitude, magnitude, fft_len);
+	for (u32 i = 0; i < fft_len; i++) {
+		magnitude[i] /= fft_len;
+		power_spectrum[i] /= fft_len;
+	}
+}
+
+float32_t compute_Sum_f32(float32_t* input_signal, u32 len) {
+	float32_t result = 0;
+	for (u32 i = 0; i < len; i++) {
+		result += input_signal[i];
+	}
+	return result;
+}
+
+void compute_SpectralCentroidSpread_f32(float32_t* frequencies, float32_t* magnitude, u32 len, float32_t* centroid, float32_t* spread) {
+	float32_t fftSum = compute_Sum_f32(magnitude, len);
+	float32_t freqTfft[len];
+	arm_mult_f32(frequencies, magnitude, freqTfft, len);
+	*centroid = 2 * compute_Sum_f32(freqTfft, len) / ((fftSum + DELTA) * SAMPLE_RATE);
+	for (u32 i = 0; i < len; i++) {
+		freqTfft[i] = powf(frequencies[i] - (*centroid), 2);
+	}
+	arm_mult_f32(freqTfft, magnitude, freqTfft, len);
+	*spread = 2 * sqrtf(compute_Sum_f32(freqTfft, len) / fftSum) / SAMPLE_RATE;
+}
+
+void compute_ZeroCrossingRate_f32(float32_t* input_signal, u32 len, float32_t* zcr) {
+	s32 sign_diff[len];
+	s32 zeros = 0;
+	sign_diff[0] = (input_signal[0] > 0.0f) - (input_signal[0] < 0.0f);
+	for (u32 i = 1; i < len; i++) {
+		sign_diff[i] = (input_signal[i] > 0.0f) - (input_signal[i] < 0.0f);
+		sign_diff[i - 1] = abs(sign_diff[i] - sign_diff[i - 1]);
+		zeros += sign_diff[i - 1];
+	}
+	*zcr = (float32_t) zeros / ((len - 1) << 1);
+}
+
+void compute_SpectralFlux_f32(float32_t* magnitude, float32_t* prev_magnitude, u32 len, float32_t* flux) {
+	float32_t diff[len];
+	arm_sub_f32(magnitude, prev_magnitude, diff, len);
+	for (u32 i = 0; i < len; i++) {
+		diff[i] = powf(diff[i], 2);
+	}
+	*flux = compute_Sum_f32(diff, len);
+}
+
+void compute_SpectralRolloff_f32(float32_t* magnitude, float32_t ratio, u32 len, float32_t* rolloff) {
+	float32_t squared_FFT = powf(magnitude[0], 2);
+	float32_t spectrumEnergy = squared_FFT;
+	float32_t cumsum[len];
+	cumsum[0] = squared_FFT;
+	for (u32 i = 1; i < len; i++) {
+		squared_FFT = powf(magnitude[i], 2);
+		cumsum[i] = cumsum[i - 1] + squared_FFT;
+		spectrumEnergy += squared_FFT;
+	}
+	float32_t threshold = spectrumEnergy * ratio;
+	s32 index = -1;
+	for (u32 i = 0; i < len; i++) {
+		if (cumsum[i] > threshold) {
+			index = i;
+			break;
+		}
+	}
+	if (index != -1) {
+		*rolloff = (index << 1) / (float32_t) len;
+	} else {
+		*rolloff = 0.0f;
+	}
+}
+
+void compute_EnergyEntropy_f32(float32_t* input_signal, u32 cut, u32 len, float32_t* entropy) {
+	*entropy = 0;
+	u32 subFramesLength = len / cut;
+	float32_t subFrames[subFramesLength][cut];
+	float32_t prob[cut];
+	float32_t energyFrame = 0;
+	for (u32 i = 0; i < len; i++) {
+		subFrames[i % subFramesLength][i / subFramesLength] = powf(input_signal[i], 2);
+	}
+	for (u32 i = 0; i < cut; i++) {
+		prob[i] = 0;
+		for (u32 j = 0; j < subFramesLength; j++) {
+			energyFrame += subFrames[j][i];
+			prob[i] += subFrames[j][i];
+		}
+	}
+	for (u32 i = 0; i < cut; i++) {
+		prob[i] /= (energyFrame + DELTA);
+		*entropy -= (prob[i] * log10f(prob[i] + DELTA) / LOG_10_2);
+	}
+}
+
+void NormalizeSignal_f32(float32_t* input_signal, u32 len, float32_t* normalized_signal) {
+	float32_t mean, rms, value;
+	float32_t temp[len];
+	arm_mean_f32(input_signal, len, &mean);
+	for (u32 i = 0; i < len; i++) {
+		temp[i] = powf(input_signal[i], 2);
+	}
+	rms = sqrtf(compute_Sum_f32(temp, len) / len);
+	for (u32 i = 0; i < len; i++) {
+		normalized_signal[i] = (input_signal[i] - mean) / (rms + DELTA);
+	}
+}
+
+void compute_Energy_f32(float32_t* input_signal, u32 len, float32_t* energy) {
+	*energy = 0;
+	for (u32 i = 0; i < len; i++) {
+		*energy += powf(input_signal[i], 2);
+	}
+	*energy /= len;
+}
+
+void compute_FilterBank_f32(float32_t** fbank, u32 fft_len, u32 sample_rate, u32 n_filt) {
+	float32_t low_freq_mel = 0.0f;
+	float32_t high_freq_mel = 2595 * log10f(1.0f + (sample_rate / 2) / (float32_t)700);
+	float32_t freq_mel_points[n_filt + 2], freq_hz_points[n_filt + 2];
+	u32 bins[n_filt + 2];
+	float32_t step = (high_freq_mel - low_freq_mel) / (n_filt + 1);
+	for (u32 i = 0; i < n_filt + 2; i++) {
+		freq_mel_points[i] = low_freq_mel + i * step;
+		freq_hz_points[i] = 700 * (powf(10, freq_mel_points[i] / 2595) - 1);
+		bins[i] = (u32)(fft_len * freq_hz_points[i] / sample_rate);
+	}
+	u32 f_left, f_current, f_right;
+	for (u32 i = 1; i < n_filt + 1; i++) {
+		f_left = bins[i - 1];
+		f_current = bins[i];
+		f_right = bins[i + 1];
+		for (u32 j = f_left; j < f_current; j++) {
+			fbank[i - 1][j] = (float32_t)(j - bins[i - 1]) / (bins[i] - bins[i - 1]);
+		}
+		for (u32 j = f_current; j < f_right; j++) {
+			fbank[i - 1][j] = (float32_t)(bins[i + 1] - j) / (bins[i + 1] - bins[i]);
+		}
+	}
+	for (u32 i = 0; i < n_filt; i++) {
+		float32_t temp = 2.0f / (freq_hz_points[i + 2] - freq_hz_points[i]);
+		for (u32 j = 0; j < fft_len / 2; j++) {
+			fbank[i][j] *= temp;
+		}
+	}
+}
+
+void compute_MFCC_f32(float32_t* power_spectrum, float32_t** fbank, u32 fft_len, u32 n_filt, u32 n_ceps, float32_t* mfcc) {
+	float32_t pre_mfcc[n_filt];
+	for (u32 i = 0; i < n_filt; i++) {
+		arm_dot_prod_f32(power_spectrum, fbank[i], fft_len, &pre_mfcc[i]);
+	}
+	for (u32 i = 0; i < n_filt; i++) {
+		pre_mfcc[i] = 10 * log10f(pre_mfcc[i] + DELTA);
+	}
+	for (u32 i = 1; i <= n_ceps; i++) {
+		float32_t sum = 0;
+		for (u32 j = 0; j < n_filt; j++) {
+			sum += pre_mfcc[j] * arm_cos_f32(PI * i * (2 * j + 1) / (2 * n_filt));
+		}
+		mfcc[i - 1] = sum * MFCC_CONSTANT2 * MFCC_Lifter[i - 1];
+	}
+}
+
+void compute_PitchHarmonicRatio_f32(float32_t* frame, float32_t expected_period, u32 sample_rate, u32 len, float32_t* pitch, float32_t* harmonic_ratio) {
+	s32 M = (u32)(expected_period * sample_rate);
+	float32_t autocorr[2 * len - 1];
+	float32_t cumsum[len];
+	float32_t g;
+	s32 M0 = -1;
+	arm_correlate_f32(frame, len, frame, len, autocorr);
+	cumsum[0] = powf(frame[0], 2);
+	for (u32 i = 1; i < len; i++) {
+		cumsum[i] = cumsum[i - 1] + powf(frame[i], 2);
+	}
+	g = autocorr[len - 1];
+	for (u32 i = 0; i < len - 2; i++) {
+		autocorr[i] = autocorr[len + i];
+	}
+	s32 sign_diff[len - 2];
+	sign_diff[0] = (autocorr[0] > 0.0f) - (autocorr[0] < 0.0f);
+	for (u32 i = 1; i < len - 2; i++) {
+		sign_diff[i] = (autocorr[i] > 0.0f) - (autocorr[i] < 0.0f);
+		sign_diff[i - 1] = sign_diff[i] - sign_diff[i - 1];
+	}
+	for (u32 i = 0; i < len - 3; i++) {
+		if (sign_diff[i] != 0) {
+			M0 = i;
+			break;
+		}
+	}
+	if (M0 == -1) {
+		M0 = len - 3;
+	}
+	if (M > (s32)(len - 2)) {
+		M = len - 3;
+	}
+	float32_t gamm[M];
+	for (s32 i = 0; i < M; i++) {
+		gamm[i] = 0;
+	}
+	if (M == 0) {
+		*pitch = 0.0f;
+		*harmonic_ratio = 1.0f;
+	} else {
+		for (s32 i = M0; i < M; i++) {
+			gamm[i] = autocorr[i] / (sqrtf(g * cumsum[M + M0 - i]) + DELTA);
+		}
+		float32_t zcr;
+		compute_ZeroCrossingRate_f32(gamm, M, &zcr);
+		if (zcr > 0.5f) {
+			*pitch = 0.0f;
+			*harmonic_ratio = 0.0f;
+		} else {
+			u32 pitch_index;
+			arm_max_f32(gamm, M, harmonic_ratio, &pitch_index);
+			*pitch = (float32_t) sample_rate / (pitch_index + DELTA);
+			if (*pitch > (float32_t) sample_rate / 2) {
+				*pitch = 0;
+			}
+		}
+	}
+}
+
+void init_LLD(low_level_descriptors* features_ctx) {
+	for (u32 i = 1; i <= HALF_FFT_LEN; i++) {
+		features_ctx->frequencies[i] = (float32_t )i * SAMPLE_RATE / FFT_LEN;
+	}
+	for (u32 i = 0; i < FFT_LEN; i++) {
+		features_ctx->x_prev_magnitude[i] = 0.0f;
+	}
+#if defined SILENCE_CROSSING_RATE
+	features_ctx->music_activity_detection = 0.0f;
+#endif
+#if defined SOUND_ACTIVITY_DETECTION
+	features_ctx->sound_activity_detection = 0.0f;
+#endif
+#if defined MFCC
+	features_ctx->filter_bank = (float32_t**)malloc(NUMBER_OF_FILTERS * sizeof(float32_t*));
+	for (u32 i = 0; i < NUMBER_OF_FILTERS; i++) {
+		features_ctx->filter_bank[i] = (float32_t*)calloc(HALF_FFT_LEN, sizeof(float32_t));
+	}
+	compute_FilterBank_f32(features_ctx->filter_bank, FFT_LEN, SAMPLE_RATE, NUMBER_OF_FILTERS);
+	features_ctx->mfcc = (float32_t**)malloc(COLLECT_TIME * sizeof(float32_t*));
+	for (u32 i = 0; i < COLLECT_TIME; i++) {
+		features_ctx->mfcc[i] = (float32_t*)calloc(NUMBER_OF_CEPSTRALS, sizeof(float32_t));
+	}
+#endif
+}
+
+void reload_LLD(low_level_descriptors* features_ctx) {
+#if defined SILENCE_CROSSING_RATE
+	features_ctx->music_activity_detection = 0.0f;
+#endif
+}
+
+void compute_LowLevelDescriptors_f32(low_level_descriptors* features_ctx, u32 time_index, arm_rfft_instance_f32 rfft_instance) {
+#if defined ENERGY
+	compute_Energy_f32(features_ctx->x.samples, FRAME_LENGTH, &features_ctx->energy[time_index]);
+	if (time_index == COLLECT_TIME - 1) {
+		arm_mean_f32(features_ctx->energy, COLLECT_TIME, &features_ctx->m_energy);
+	}
+#endif
+#if defined NORMALIZE_SIGNAL
+	NormalizeSignal_f32(features_ctx->x.samples, FRAME_LENGTH, features_ctx->x.samples);
+#endif
+#if defined HAMMING_WINDOW
+	arm_mult_f32(features_ctx->x.samples, HammingWindow, features_ctx->x.samples, FRAME_LENGTH);
+#endif
+#if defined ZERO_CROSSING_RATE
+	compute_ZeroCrossingRate_f32(features_ctx->x.samples, FRAME_LENGTH, &features_ctx->zero_crossing_rate[time_index]);
+	if (time_index == COLLECT_TIME - 1) {
+		arm_mean_f32(features_ctx->zero_crossing_rate, COLLECT_TIME, &features_ctx->m_zeroCrossingRate);
+	}
+#endif
+#if defined ENERGY_ENTROPY
+	compute_EnergyEntropy_f32(features_ctx->x.samples, ENTROPY_CUT, FRAME_LENGTH, &features_ctx->energy_entropy[time_index]);
+	if (time_index == COLLECT_TIME - 1) {
+		arm_mean_f32(features_ctx->energy_entropy, COLLECT_TIME, &features_ctx->m_energyEntropy);
+	}
+#endif
+#if defined PITCH
+	compute_PitchHarmonicRatio_f32(features_ctx->x.samples, PITCH_EP, SAMPLE_RATE, FRAME_LENGTH / 2, &features_ctx->pitch[time_index], &features_ctx->harmonic_ratio[time_index]);
+	if (time_index == COLLECT_TIME - 1) {
+		float32_t mean, var;
+		arm_var_f32(features_ctx->harmonic_ratio, COLLECT_TIME, &features_ctx->s_harmonicRatio);
+		u32 k_pitch = 0;
+		for (u32 i = 0; i < COLLECT_TIME; i++) {
+			if (features_ctx->pitch[i] >= 50 && features_ctx->pitch[i] <= 300) {
+				features_ctx->m_pitch += features_ctx->pitch[i];
+				k_pitch++;
+			}
+		}
+		if (k_pitch != 0) {
+			features_ctx->m_pitch /= k_pitch;
+		} else {
+			features_ctx->m_pitch = 0.0f;
+		}
+	}
+#endif
+#if defined SILENCE_CROSSING_RATE
+#if defined ZERO_CROSSING_RATE
+#if defined SPECTRAL_ROLLOFF
+#if defined PITCH
+	if (time_index == COLLECT_TIME - 1) {
+		arm_copy_f32(features_ctx->zero_crossing_rate, features_ctx->silence_crossing_rate, COLLECT_TIME);
+		arm_mult_f32(features_ctx->spectral_rolloff, features_ctx->silence_crossing_rate, features_ctx->silence_crossing_rate, COLLECT_TIME);
+		arm_mult_f32(features_ctx->harmonic_ratio, features_ctx->silence_crossing_rate, features_ctx->silence_crossing_rate, COLLECT_TIME);
+		for (u32 i = 0; i < COLLECT_TIME; i++) {
+			if (features_ctx->silence_crossing_rate[i] / features_ctx->s_harmonicRatio < SAD_THRESHOLD2) {
+				features_ctx->music_activity_detection += 1.0f;
+			}
+		}
+	}
+#endif
+#endif
+#endif
+#endif
+	for (u32 i = FRAME_LENGTH; i < FFT_LEN; i++) {
+		features_ctx->x.samples[i] = 0.0f;
+	}
+	compute_RealFastFourierTransformMagnitude_f32(&rfft_instance, features_ctx->x.samples, FFT_LEN, features_ctx->x.magnitude, features_ctx->x.power_spectrum);
+#if defined SPECTRAL_CENTROID_AND_SPREAD
+	compute_SpectralCentroidSpread_f32(features_ctx->frequencies, features_ctx->x.magnitude, HALF_FFT_LEN, &features_ctx->spectral_centroid[time_index], &features_ctx->spectral_spread[time_index]);
+	if (time_index == COLLECT_TIME - 1) {
+		arm_mean_f32(features_ctx->spectral_centroid, COLLECT_TIME, &features_ctx->m_spectralCentroid);
+		arm_var_f32(features_ctx->spectral_centroid, COLLECT_TIME, &features_ctx->s_spectralCentroid);
+		arm_mean_f32(features_ctx->spectral_spread, COLLECT_TIME, &features_ctx->m_spectralSpread);
+		arm_var_f32(features_ctx->spectral_spread, COLLECT_TIME, &features_ctx->s_spectralSpread);
+	}
+#endif
+#if defined SPECTRAL_FLUX
+	compute_SpectralFlux_f32(features_ctx->x.magnitude, features_ctx->x_prev_magnitude, HALF_FFT_LEN, &features_ctx->spectral_flux[time_index]);
+	if (time_index == COLLECT_TIME - 1) {
+		arm_mean_f32(features_ctx->spectral_flux, COLLECT_TIME, &features_ctx->m_spectralFlux);
+		arm_var_f32(features_ctx->spectral_flux, COLLECT_TIME, &features_ctx->s_spectralFlux);
+	}
+	for (u32 i = 0; i < FFT_LEN; i++) {
+		features_ctx->x_prev_magnitude[i] = features_ctx->x.magnitude[i];
+	}
+#endif
+#if defined SPECTRAL_ROLLOFF
+	compute_SpectralRolloff_f32(features_ctx->x.magnitude, ROLLOFF_RATIO, HALF_FFT_LEN, &features_ctx->spectral_rolloff[time_index]);
+	if (time_index == COLLECT_TIME - 1) {
+		arm_mean_f32(features_ctx->spectral_rolloff, COLLECT_TIME, &features_ctx->m_spectralRolloff);
+	}
+#endif
+#if defined SOUND_ACTIVITY_DETECTION
+#if defined ENERGY
+#if defined ZERO_CROSSING_RATE
+	if (time_index == COLLECT_TIME - 1) {
+		float32_t featureSAD = features_ctx->m_energy * features_ctx->m_zeroCrossingRate;
+		if (featureSAD < SAD_THRESHOLD1) {
+			features_ctx->sound_activity_detection = 0.0f;
+		} else {
+			features_ctx->sound_activity_detection = 1.0f;
+		}
+	}
+#endif
+#endif
+#endif
+#if defined MFCC
+	compute_MFCC_f32(features_ctx->x.power_spectrum, features_ctx->filter_bank, HALF_FFT_LEN, NUMBER_OF_FILTERS, NUMBER_OF_CEPSTRALS, features_ctx->mfcc[time_index]);
+	if (time_index == COLLECT_TIME - 1) {
+		for (u32 i = 0; i < NUMBER_OF_CEPSTRALS; i++) {
+			float32_t sum = 0, sum_squared = 0;
+			for (u32 j = 0; j < COLLECT_TIME; j++) {
+				sum += features_ctx->mfcc[j][i];
+			}
+			features_ctx->m_MFCC[i] = sum / COLLECT_TIME;
+		}
+	}
+#endif
+}

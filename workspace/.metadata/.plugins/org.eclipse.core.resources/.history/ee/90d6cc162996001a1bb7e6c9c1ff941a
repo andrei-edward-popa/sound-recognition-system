@@ -1,0 +1,321 @@
+#include "board.h"
+#include "fsl_uart.h"
+
+#include <arm_math.h>
+
+#include "pin_mux.h"
+#include "clock_config.h"
+
+#include "fsl_debug_console.h"
+#include "fsl_sai.h"
+#include "fsl_codec_common.h"
+
+#include "fsl_dialog7212.h"
+#include "fsl_gpio.h"
+#include "fsl_port.h"
+#include "fsl_codec_adapter.h"
+
+#define DEMO_UART UART0
+#define DEMO_UART_CLKSRC SYS_CLK
+#define DEMO_UART_CLK_FREQ CLOCK_GetFreq(SYS_CLK)
+#define DEMO_UART_IRQn UART0_RX_TX_IRQn
+#define DEMO_UART_IRQHandler UART0_RX_TX_IRQHandler
+
+#define DEMO_CODEC_DA7212
+#define DEMO_SAI I2S0
+#define DEMO_I2C I2C1
+#define DEMO_SAI_CLKSRC kCLOCK_CoreSysClk
+#define DEMO_SAI_CLK_FREQ CLOCK_GetFreq(kCLOCK_CoreSysClk)
+#define DEMO_I2C_CLKSRC kCLOCK_BusClk
+#define DEMO_I2C_CLK_FREQ CLOCK_GetFreq(kCLOCK_BusClk)
+
+#define I2C_RELEASE_SDA_PORT PORTC
+#define I2C_RELEASE_SCL_PORT PORTC
+#define I2C_RELEASE_SDA_GPIO GPIOC
+#define I2C_RELEASE_SDA_PIN 11U
+#define I2C_RELEASE_SCL_GPIO GPIOC
+#define I2C_RELEASE_SCL_PIN 10U
+#define I2C_RELEASE_BUS_COUNT 100U
+#define OVER_SAMPLE_RATE (384U)
+#define BUFFER_SIZE (1024U)
+#define BUFFER_NUMBER (4U)
+
+#define DEMO_AUDIO_SAMPLE_RATE (kSAI_SampleRate16KHz)
+
+#if (defined FSL_FEATURE_SAI_HAS_MCLKDIV_REGISTER && FSL_FEATURE_SAI_HAS_MCLKDIV_REGISTER) || \
+    (defined FSL_FEATURE_PCC_HAS_SAI_DIVIDER && FSL_FEATURE_PCC_HAS_SAI_DIVIDER)
+#define DEMO_AUDIO_MASTER_CLOCK OVER_SAMPLE_RATE *DEMO_AUDIO_SAMPLE_RATE
+#else
+#define DEMO_AUDIO_MASTER_CLOCK DEMO_SAI_CLK_FREQ
+#endif
+
+#define DEMO_AUDIO_DATA_CHANNEL (2U)
+
+#define DEMO_AUDIO_BIT_WIDTH kSAI_WordWidth16bits
+
+#ifndef DEMO_SAI_TX_SYNC_MODE
+#define DEMO_SAI_TX_SYNC_MODE kSAI_ModeAsync
+#endif
+#ifndef DEMO_SAI_RX_SYNC_MODE
+#define DEMO_SAI_RX_SYNC_MODE kSAI_ModeSync
+#endif
+
+void BOARD_I2C_ReleaseBus(void);
+
+da7212_config_t da7212Config = {
+    .i2cConfig    = {.codecI2CInstance = BOARD_CODEC_I2C_INSTANCE, .codecI2CSourceClock = 60000000},
+    .dacSource    = kDA7212_DACSourceInputStream,
+    .slaveAddress = DA7212_ADDRESS,
+    .protocol     = kDA7212_BusI2S,
+    .format       = {.mclk_HZ = 6144000U, .sampleRate = 16000, .bitWidth = 16},
+    .isMaster     = false,
+};
+
+AT_NONCACHEABLE_SECTION_ALIGN(static uint8_t Buffer[BUFFER_NUMBER * BUFFER_SIZE], 4);
+
+volatile uint32_t emptyBlock = BUFFER_NUMBER;
+
+#if (defined(FSL_FEATURE_SAI_HAS_MCR) && (FSL_FEATURE_SAI_HAS_MCR)) || \
+    (defined(FSL_FEATURE_SAI_HAS_MCLKDIV_REGISTER) && (FSL_FEATURE_SAI_HAS_MCLKDIV_REGISTER))
+sai_master_clock_t mclkConfig = {
+#if defined(FSL_FEATURE_SAI_HAS_MCR) && (FSL_FEATURE_SAI_HAS_MCR)
+    .mclkOutputEnable = true,
+#if !(defined(FSL_FEATURE_SAI_HAS_NO_MCR_MICS) && (FSL_FEATURE_SAI_HAS_NO_MCR_MICS))
+    .mclkSource = kSAI_MclkSourceSysclk,
+#endif
+#endif
+};
+#endif
+
+codec_config_t boardCodecConfig = {.codecDevType = kCODEC_DA7212, .codecDevConfig = &da7212Config};
+
+sai_handle_t txHandle = {0}, rxHandle = {0};
+
+codec_handle_t codecHandle;
+
+static uint32_t tx_index = 0U, rx_index = 0U;
+
+static void rx_callback(I2S_Type *base, sai_handle_t *handle, status_t status, void *userData) {
+    if (kStatus_SAI_RxError == status) {
+        /* Handle the error. */
+    }
+    else {
+        emptyBlock--;
+    }
+}
+
+static void tx_callback(I2S_Type *base, sai_handle_t *handle, status_t status, void *userData) {
+    if (kStatus_SAI_TxError == status) {
+        /* Handle the error. */
+    }
+    else {
+        emptyBlock++;
+    }
+}
+
+void UART_Init_Config(uart_config_t *uartConfig) {
+	UART_GetDefaultConfig(uartConfig);
+	uartConfig->baudRate_Bps = BOARD_DEBUG_UART_BAUDRATE;
+	uartConfig->enableTx     = true;
+	uartConfig->enableRx     = true;
+
+	UART_Init(DEMO_UART, uartConfig, DEMO_UART_CLK_FREQ);
+}
+
+void SAI_Init_Config(sai_transceiver_t *saiConfig, sai_handle_t *txHandle, sai_handle_t *rxHandle, sai_master_clock_t *mclkConfig,
+					 codec_handle_t *codecHandle, codec_config_t *boardCodecConfig) {
+	SAI_Init(DEMO_SAI);
+	SAI_TransferTxCreateHandle(DEMO_SAI, txHandle, tx_callback, NULL);
+	SAI_TransferRxCreateHandle(DEMO_SAI, rxHandle, rx_callback, NULL);
+
+	SAI_GetClassicI2SConfig(saiConfig, DEMO_AUDIO_BIT_WIDTH, kSAI_Stereo, kSAI_Channel0Mask);
+	saiConfig->syncMode = DEMO_SAI_TX_SYNC_MODE;
+	SAI_TransferTxSetConfig(DEMO_SAI, txHandle, saiConfig);
+	saiConfig->syncMode = DEMO_SAI_RX_SYNC_MODE;
+	SAI_TransferRxSetConfig(DEMO_SAI, rxHandle, saiConfig);
+
+	SAI_TxSetBitClockRate(DEMO_SAI, DEMO_AUDIO_MASTER_CLOCK, DEMO_AUDIO_SAMPLE_RATE, DEMO_AUDIO_BIT_WIDTH,
+						  DEMO_AUDIO_DATA_CHANNEL);
+	SAI_RxSetBitClockRate(DEMO_SAI, DEMO_AUDIO_MASTER_CLOCK, DEMO_AUDIO_SAMPLE_RATE, DEMO_AUDIO_BIT_WIDTH,
+						  DEMO_AUDIO_DATA_CHANNEL);
+
+#if (defined(FSL_FEATURE_SAI_HAS_MCR) && (FSL_FEATURE_SAI_HAS_MCR)) || \
+	(defined(FSL_FEATURE_SAI_HAS_MCLKDIV_REGISTER) && (FSL_FEATURE_SAI_HAS_MCLKDIV_REGISTER))
+#if defined(FSL_FEATURE_SAI_HAS_MCLKDIV_REGISTER) && (FSL_FEATURE_SAI_HAS_MCLKDIV_REGISTER)
+	mclkConfig->mclkHz          = DEMO_AUDIO_MASTER_CLOCK;
+	mclkConfig->mclkSourceClkHz = DEMO_SAI_CLK_FREQ;
+#endif
+	SAI_SetMasterClockConfig(DEMO_SAI, mclkConfig);
+#endif
+
+	CODEC_Init(codecHandle, boardCodecConfig);
+
+#if defined DIG_MIC
+	DA7212_ChangeInput((da7212_handle_t *)((uint32_t)(codecHandle->codecDevHandle)), kDA7212_Input_MIC1_Dig);
+#endif
+}
+
+#define FFT_LEN 512
+
+int main(void) {
+	q15_t voice[] = {
+			-1129, -1033,  -985, -1042, -1683, -2126, -1896, -1299,  -438,
+			 633,  1651,  2339,  2635,  2891,  3217,  3503,  4200,  5100,
+			5642,  5606,  5237,  5042,  5152,  5112,  4463,  3867,  3264,
+			2699,  2536,  2084,  1658,  1207,   846,   999,  1113,  1073,
+			1007,  1005,  1169,  1452,  1903,  2537,  2733,  2746,  3005,
+			3178,  3203,  3135,  3313,  3490,  3424,  3368,  3239,  2775,
+			2144,  1800,  1625,  1218,   628,    99,  -608, -1587, -2349,
+		   -2290, -1994, -2284, -2901, -3941, -5150, -5295, -3420,  -566,
+			1460,  1638,  1156,  1322,  1575,  2568,  3884,  5341,  6802,
+			7308,  7109,  5903,  4574,  4267,  4493,  4631,  4641,  4278,
+			3245,  1365,  -317,  -657,  -606,  -537,  -535,  -711, -1165,
+		   -1945, -2232, -1878, -1347,  -608,   368,  1085,  1471,  1732,
+			2170,  2634,  3037,  3831,  4665,  5047,  5171,  5596,  5571,
+			4752,  4263,  4010,  4168,  4186,  3640,  3172,  2130,  1381,
+			1446,  1529,  1421,  1178,  1058,   943,   735,   941,  1484,
+			1628,  1866,  2296,  2573,  2558,  2401,  2595,  2789,  2931,
+			3346,  3630,  3334,  2834,  2556,  2390,  2105,  1881,  1738,
+			1205,   411,  -151,  -666, -1490, -2082, -1855, -1617, -2087,
+		   -3020, -4246, -5044, -4312, -2609,     9,  1115,   647,    79,
+			 525,  1522,  2796,  4022,  4959,  5771,  6302,  6279,  5428,
+			4508,  4290,  4573,  4721,  4680,  4288,  3006,  1224,    50,
+			 -22,   174,   107,  -145,  -625, -1348, -1903, -1883, -1518,
+		   -1076,  -481,   272,   770,   979,  1243,  1691,  2141,  2703,
+			3573,  4382,  4897,  5150,  5454,  5113,  4149,  3918,  4012,
+			4467,  4674,  4152,  3345,  2024,  1310,  1458,  1725,  1761,
+			1584,  1250,   869,   592,   851,  1323,  1459,  1834,  2162,
+			2290,  2178,  2027,  2227,  2437,  2776,  3287,  3381,  2957,
+			2458,  2189,  2142,  2054,  2049,  1826,  1080,   305,  -273,
+			-789, -1344, -1433, -1081, -1378, -2292, -3305, -4391, -4759,
+		   -3844, -1995,  -102,   479,  -132,  -571,  -227,  1092,  2790,
+			4019,  4590,  4890,  5306,  5266,  4767,  4512,  4637,  4830,
+			4931,  4729,  3999,  2719,  1406,   892,   885,   968,   867,
+			 326,  -477, -1267, -1538, -1347, -1047,  -644,  -170,   133,
+			 250,   349,   694,  1277,  1844,  2551,  3285,  4095,  4827,
+			4828,  4097,  3362,  3526,  4470,  5471,  5540,  4524,  3125,
+			1917,  1735,  2302,  2744,  2742,  2178,  1317,   660,   541,
+			 929,  1365,  1660,  1846,  1771,  1513,  1329,  1438,  1791,
+			2200,  2589,  2828,  2677,  2338,  2153,  2151,  2231,  2352,
+			2464,  2266,  1656,   995,   447,   -91,  -472,  -610,  -480,
+			-440, -1104, -1984, -2810, -3671, -3838, -3372, -2447, -1142,
+			-395,  -288,  -677, -1114,  -242,  1460,  2984,  4070,  4224,
+			4054,  3788,  3549,  4047,  4637,  4901,  4906,  4460,  3727,
+			2776,  1981,  1757,  1632,  1588,  1550,  1040,   251,  -526,
+			-824,  -635,  -421,   -49,   256,   171,   -40,   -39,   420,
+			 939,  1511,  2149,  2416,  2468,  2543,  3310,  4176,  3863,
+			3761,  3869,  3659,  4206,  4246,  3912,  3273,  2323,  2468,
+			2728,  2597,  2489,  2112,  1530,  1070,  1099,  1615,  1544,
+			1462,  1686,  1500,  1399,  1364,  1572,  1806,  1794,  2118,
+			2320,  1971,  1806,  1901,  2069,  2121,  2063,  2081,  1585,
+			 909,   607,   256,  -124,  -138,   214,    99,  -769, -1630,
+		   -2465, -3022, -2980, -2771, -2379, -1801, -1451,  -991,  -883,
+		   -1371, -1078,   -64,  1470,  2979,  3527,  3397,  2883,  2702,
+			3277,  3945,  4583,  4905,  4545,  3895,  3179,  2622,  2242,
+			2074,  2166,  2158,     0,     0,     0,     0,     0,     0,
+			   0,     0,     0,     0,     0,     0,     0,     0,     0,
+			   0,     0,     0,     0,     0,     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+	};
+	unsigned int voice_len = FFT_LEN;
+	q15_t output[FFT_LEN * 2];
+	q15_t output_mag[FFT_LEN];
+	arm_rfft_instance_q15 RealFFT_Instance;
+	arm_status status = arm_rfft_init_q15(&RealFFT_Instance, FFT_LEN, 0, 1);
+	printf("%d\n", status);
+	arm_rfft_q15(&RealFFT_Instance, voice, output);
+	for (uint32_t i = 0; i < 2 * FFT_LEN; i++) {
+		output[i] <<= 9;
+	}
+	arm_abs_q15(output, output_mag, FFT_LEN);
+	for (uint32_t i = 0; i < FFT_LEN; i++) {
+		printf("%d\n", output_mag[i]);
+	}
+
+
+
+
+//	sai_transfer_t xfer;
+//	uart_config_t uart_config;
+//	sai_transceiver_t sai_config;
+//
+//	BOARD_InitPins();
+//	BOARD_BootClockRUN();
+//	BOARD_InitDebugConsole();
+//
+//	UART_Init_Config(&uart_config);
+//	SAI_Init_Config(&sai_config, &txHandle, &rxHandle, &mclkConfig, &codecHandle, &boardCodecConfig);
+//
+//
+//
+//
+//    int k = 0;
+//    int16_t samples[16000 * 6];
+//
+//    while (k < 375) {
+//        if (emptyBlock > 0) {
+//            xfer.data     = Buffer + rx_index * BUFFER_SIZE;
+//            xfer.dataSize = BUFFER_SIZE;
+//            if (kStatus_Success == SAI_TransferReceiveNonBlocking(DEMO_SAI, &rxHandle, &xfer)) {
+//                rx_index++;
+//            }
+//            if (rx_index == BUFFER_NUMBER) {
+//                rx_index = 0U;
+//            }
+//        }
+//        if (emptyBlock < BUFFER_NUMBER) {
+//            xfer.data     = Buffer + tx_index * BUFFER_SIZE;
+//            xfer.dataSize = BUFFER_SIZE;
+//            if (kStatus_Success == SAI_TransferSendNonBlocking(DEMO_SAI, &txHandle, &xfer)) {
+//				for (uint32_t i = 0; i < BUFFER_SIZE; i += 4) {
+////					uint8_t combined[6];
+//					int16_t sample = ((int16_t)xfer.data[i + 1] << 8) | xfer.data[i];
+//					samples[k * BUFFER_SIZE / 4 + i / 4] = sample;
+////					sprintf((char*)combined, "%hd", sample);
+////					UART_WriteBlocking(DEMO_UART, combined, sizeof(combined) / sizeof(combined[0]));
+////					UART_WriteByte(DEMO_UART, '\n');
+////					UART_WriteByte(DEMO_UART, '\r');
+//				}
+//            	k++;
+////            	if (k == 64) {
+////            		UART_WriteByte(DEMO_UART, 'a');
+////            		k = 0;
+////            	}
+//            	tx_index++;
+//            }
+//            if (tx_index == BUFFER_NUMBER) {
+//                tx_index = 0U;
+//            }
+//        }
+//    }
+//    for (int i = 0; i < 96000; i++) {
+//		uint8_t combined[6];
+//		sprintf((char*)combined, "%hd", samples[i]);
+//		UART_WriteBlocking(DEMO_UART, combined, sizeof(combined) / sizeof(combined[0]));
+//		UART_WriteByte(DEMO_UART, '\n');
+//		UART_WriteByte(DEMO_UART, '\r');
+//	}
+    return 0;
+}

@@ -1,0 +1,8 @@
+core_cm4.h:1679:22:__NVIC_EnableIRQ	16	static
+fsl_common.h:460:28:EnableIRQ	16	static
+fsl_uart.h:538:20:UART_WriteByte	16	static
+fsl_uart.h:552:23:UART_ReadByte	16	static
+sai_interrupt_record_playback.c:19:6:UART0_RX_TX_IRQHandler	16	static
+sai_interrupt_record_playback.c:145:13:rx_callback	24	static
+sai_interrupt_record_playback.c:157:13:tx_callback	24	static
+sai_interrupt_record_playback.c:175:5:main	192096	static

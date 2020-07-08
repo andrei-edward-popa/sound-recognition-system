@@ -1,0 +1,94 @@
+#ifndef _STRUCTURES_H_
+#define _STRUCTURES_H_
+
+typedef uint8_t u8;
+typedef int16_t s16;
+typedef uint16_t u16;
+typedef int32_t s32;
+typedef uint32_t u32;
+typedef int64_t s64;
+typedef uint64_t u64;
+
+#define FFT_LEN 512
+#define HALF_FFT_LEN (FFT_LEN / 2)
+#define FRAME_LENGTH 480
+#define SAMPLE_RATE 16000
+#define DELTA 0.0000000001
+#define LOG_10_2 0.3010299957
+#define COLLECT_TIME (SAMPLE_RATE / FRAME_LENGTH / 2) // 480 ms
+#define SAD_THRESHOLD1 0.0000007
+#define SAD_THRESHOLD2 1
+#define MFCC_CONSTANT1 0.158113883
+#define MFCC_CONSTANT2 0.2236067977
+#define NUMBER_OF_FILTERS 40
+#define NUMBER_OF_CEPSTRALS 13
+#define ROLLOFF_RATIO 0.5
+#define ENTROPY_CUT 20
+#define PITCH_EP 0.04
+
+#define SPECTRAL_CENTROID_AND_SPREAD
+#define SPECTRAL_FLUX
+#define SPECTRAL_ROLLOFF
+#define ENERGY_ENTROPY
+#define ENERGY
+#define MFCC
+#define SOUND_ACTIVITY_DETECTION
+#define SILENCE_CROSSING_RATE
+#define ZERO_CROSSING_RATE
+#define PITCH
+#define NORMALIZE_SIGNAL
+#define HAMMING_WINDOW
+
+typedef struct signal_buf_t {
+	float32_t samples[FFT_LEN];
+	float32_t magnitude[2 * FFT_LEN];
+	float32_t power_spectrum[FFT_LEN];
+} signal_buf;
+
+typedef struct low_level_descriptors_t {
+	signal_buf x;
+	float32_t frequencies[HALF_FFT_LEN];
+	float32_t x_prev_magnitude[FFT_LEN];
+#if defined SPECTRAL_CENTROID_AND_SPREAD
+	float32_t m_spectralCentroid, s_spectralCentroid, m_spectralSpread, s_spectralSpread;;
+	float32_t spectral_centroid[COLLECT_TIME], spectral_spread[COLLECT_TIME];
+#endif
+#if defined SPECTRAL_ROLLOFF
+	float32_t m_spectralRolloff;
+	float32_t spectral_rolloff[COLLECT_TIME];
+#endif
+#if defined SPECTRAL_FLUX
+	float32_t m_spectralFlux, s_spectralFlux;
+	float32_t spectral_flux[COLLECT_TIME];
+#endif
+#if defined ZERO_CROSSING_RATE
+	float32_t m_zeroCrossingRate;
+	float32_t zero_crossing_rate[COLLECT_TIME];
+#endif
+#if defined ENERGY_ENTROPY
+	float32_t m_energyEntropy;
+	float32_t energy_entropy[COLLECT_TIME];
+#endif
+#if defined ENERGY
+	float32_t energy[COLLECT_TIME];
+	float32_t m_energy;
+#endif
+#if defined SILENCE_CROSSING_RATE
+	float32_t music_activity_detection;
+	float32_t silence_crossing_rate[3 * COLLECT_TIME];
+#endif
+#if defined PITCH
+	float32_t m_pitch, mdv_harmonicRatio;
+	float32_t pitch[COLLECT_TIME], harmonic_ratio[COLLECT_TIME];
+#endif
+#if defined MFCC
+	float32_t** filter_bank;
+	float32_t** mfcc;
+	float32_t m_MFCC[NUMBER_OF_CEPSTRALS];
+#endif
+#if defined SOUND_ACTIVITY_DETECTION
+	float32_t sound_activity_detection;
+#endif
+} low_level_descriptors;
+
+#endif

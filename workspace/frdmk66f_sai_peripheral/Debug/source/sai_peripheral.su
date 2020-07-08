@@ -1,0 +1,6 @@
+sai_peripheral.c:106:6:txCallback	8	static
+sai_peripheral.c:119:6:rxCallback	8	static
+sai_peripheral.c:227:5:main	40	static
+sai_peripheral.c:318:6:I2S0_Tx_IRQHandler	8	static
+sai_peripheral.c:330:6:I2S0_Rx_IRQHandler	8	static
+sai_peripheral.c:341:6:SAI_UserIRQHandler	8	static

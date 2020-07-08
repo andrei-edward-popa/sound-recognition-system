@@ -1,0 +1,7 @@
+[Desktop Entry]
+Version=1.0
+Name=Sound\nrecognition
+Exec=python3 "/home/apopa/Facultate/Licenta/srcPy/GUI.py"
+Terminal=true
+Icon=/home/apopa/Facultate/Licenta/images/icon.png
+Type=Application

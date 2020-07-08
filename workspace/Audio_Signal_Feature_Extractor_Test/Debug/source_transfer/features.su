@@ -1,0 +1,15 @@
+features.c:7:6:compute_RealFastFourierTransformMagnitude_f32	32	static
+features.c:17:11:compute_Sum_f32	24	static
+features.c:25:6:compute_SpectralCentroidSpread_f32	56	dynamic
+features.c:37:6:compute_ZeroCrossingRate_f32	48	dynamic
+features.c:49:6:compute_SpectralFlux_f32	48	dynamic
+features.c:58:6:compute_SpectralRolloff_f32	64	dynamic
+features.c:83:6:compute_EnergyEntropy_f32	104	dynamic
+features.c:105:6:NormalizeSignal_f32	64	dynamic
+features.c:118:6:compute_Energy_f32	32	static
+features.c:126:6:compute_FilterBank_f32	112	dynamic
+features.c:157:6:compute_MFCC_f32	80	dynamic
+features.c:174:6:compute_PitchHarmonicRatio_f32	152	dynamic
+features.c:234:6:init_LLD	40	static
+features.c:260:6:reload_LLD	16	static
+features.c:266:6:compute_LowLevelDescriptors_f32	72	static

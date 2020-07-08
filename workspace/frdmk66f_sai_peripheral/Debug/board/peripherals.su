@@ -1,0 +1,4 @@
+peripherals.c:81:6:DEMO_eDMA_init	0	static
+peripherals.c:326:6:DEMO_SAI_init	32	static
+peripherals.c:363:6:BOARD_InitPeripherals	8	static
+peripherals.c:377:6:BOARD_InitBootPeripherals	8	static
