@@ -1,5 +1,6 @@
 import tkinter as tk
 import os
+import signal
 import RecognitionGUI
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
@@ -8,8 +9,12 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 from PIL import ImageTk, Image
 
-os.chdir('/home/apopa/Facultate/Licenta/srcPy')
-os.system('gnome-terminal -- bash -c "sudo minicom -b 921600 -D /dev/ttyACM0 -C /home/apopa/Desktop/test; exec bash"')
+f = open('/home/apopa/Gitroot/Sound-Recognition-System/SerialData', 'r+')
+f.truncate(0)
+f.close()
+
+os.chdir('/home/apopa/Gitroot/Sound-Recognition-System/srcPy')
+os.system('gnome-terminal -- bash -c "sudo minicom -b 921600 -D /dev/ttyACM0 -C /home/apopa/Gitroot/Sound-Recognition-System/SerialData; exec bash"')
 classification_algorithm = None
 
 def plot_MAD():
@@ -219,14 +224,15 @@ def stopRecognition():
 def on_closing():
     if RecognitionGUI.thr != None and RecognitionGUI.thr.is_alive():
         RecognitionGUI.thr.cancel()
+    # os.kill(os.getppid(), signal.SIGHUP)
     root.destroy()
 
 root.protocol("WM_DELETE_WINDOW", on_closing)
 
-canvas = tk.Canvas(root, height=700, width=700, bg='#CCCCFF')
+canvas = tk.Canvas(root, height=600, width=600, bg='#CCCCFF')
 canvas.pack()
 frame = tk.Frame(root, bg='white')
-frame.place(relwidth=0.6, relheight=0.45, relx=0.22, rely=0.2)
+frame.place(relwidth=0.6, relheight=0.6, relx=0.22, rely=0.15)
 
 startButton = tk.Button(root, text='Start Recognition', padx=10, pady=5, fg='white', bg='black', command=startRecognition)
 startButton.pack(side='left', padx=70, pady=20)
@@ -256,31 +262,31 @@ def set_label():
     global label2
     label2['text'] = RecognitionGUI.result
     if RecognitionGUI.result == 'silence':
-        img = ImageTk.PhotoImage(Image.open('/home/apopa/Facultate/Licenta/images/silence.jpg'))
+        img = ImageTk.PhotoImage(Image.open('/home/apopa/Gitroot/Sound-Recognition-System/images/silence.jpg'))
         label3.configure(image=img)
         label3.image = img
     elif RecognitionGUI.result == 'speech male':
-        img = ImageTk.PhotoImage(Image.open('/home/apopa/Facultate/Licenta/images/male.jpg'))
+        img = ImageTk.PhotoImage(Image.open('/home/apopa/Gitroot/Sound-Recognition-System/images/male.jpg'))
         label3.configure(image=img)
         label3.image = img
     elif RecognitionGUI.result == 'speech female':
-        img = ImageTk.PhotoImage(Image.open('/home/apopa/Facultate/Licenta/images/female.jpg'))
+        img = ImageTk.PhotoImage(Image.open('/home/apopa/Gitroot/Sound-Recognition-System/images/female.jpg'))
         label3.configure(image=img)
         label3.image = img
     elif RecognitionGUI.result == 'musical_instruments string':
-        img = ImageTk.PhotoImage(Image.open('/home/apopa/Facultate/Licenta/images/string.jpg'))
+        img = ImageTk.PhotoImage(Image.open('/home/apopa/Gitroot/Sound-Recognition-System/images/string.jpg'))
         label3.configure(image=img)
         label3.image = img
     elif RecognitionGUI.result == 'musical_instruments brass':
-        img = ImageTk.PhotoImage(Image.open('/home/apopa/Facultate/Licenta/images/brass.jpg'))
+        img = ImageTk.PhotoImage(Image.open('/home/apopa/Gitroot/Sound-Recognition-System/images/brass.jpg'))
         label3.configure(image=img)
         label3.image = img
     elif RecognitionGUI.result == 'musical_instruments woodwind':
-        img = ImageTk.PhotoImage(Image.open('/home/apopa/Facultate/Licenta/images/woodwind.jpg'))
+        img = ImageTk.PhotoImage(Image.open('/home/apopa/Gitroot/Sound-Recognition-System/images/woodwind.jpg'))
         label3.configure(image=img)
         label3.image = img
     elif RecognitionGUI.result == 'unknown':
-        img = ImageTk.PhotoImage(Image.open('/home/apopa/Facultate/Licenta/images/unknown.jpg'))
+        img = ImageTk.PhotoImage(Image.open('/home/apopa/Gitroot/Sound-Recognition-System/images/unknown.jpg'))
         label3.configure(image=img)
         label3.image = img
     root.after(1, set_label)

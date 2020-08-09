@@ -7,7 +7,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import StratifiedShuffleSplit
 import os
 
-os.chdir('/home/apopa/Facultate/Licenta/srcPy')
+os.chdir('/home/apopa/Gitroot/Sound-Recognition-System/srcPy')
 
 class Constants:
     m_testSize = 0.15
@@ -130,7 +130,7 @@ def getData(classifier='kNN'):
     arr = np.array([])
     thr = threading.Timer(0.48, getData, [classifier])
     thr.start()
-    f = open('/home/apopa/Desktop/test', 'r+')
+    f = open('/home/apopa/Gitroot/Sound-Recognition-System/SerialData', 'r+')
 #    try:
     for line in f:
         line = line[:-1]
@@ -165,9 +165,7 @@ def getData(classifier='kNN'):
             result = 'speech' + ' ' + sp_classes[pred]
         elif music(MCR) + prediction == 1:
             result = 'unknown'
-    f.truncate(0)
-    f.close()
 #    except:
 #        result = 'A synchronization error occured...'
-#        f.truncate(0)
-#        f.close()
+    f.truncate(0)
+    f.close()

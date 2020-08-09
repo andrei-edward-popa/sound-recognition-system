@@ -131,48 +131,48 @@ if classifier == 'RF':
 np.set_printoptions(precision=2)
 
 print()
-print("Clasificarea intre instrument muzical si voce")
-print("Precizie: ", precision_score(test_classes, predicted_labels,average=None))
+print("Classification between musical instrument and speech")
+print("Precision: ", precision_score(test_classes, predicted_labels,average=None))
 print("Recall: ", recall_score(test_classes, predicted_labels,average=None))
-print("Scor F1: ", f1_score(test_classes, predicted_labels, average=None))
-print("Acuratete: {:.2f}\n{} corecte / {} sunete".format(accuracy_score(test_classes, predicted_labels,normalize=True), 
+print("F1-Score: ", f1_score(test_classes, predicted_labels, average=None))
+print("Accuracy: {:.2f}\n{} / {}".format(accuracy_score(test_classes, predicted_labels,normalize=True), 
                                                          accuracy_score(test_classes, predicted_labels,normalize=False),
                                                          test_classes.shape[0]))
 print()
 
 print()
-print("Clasificarea intre instumente muzicale (din alama, cu corzi, din lemn)")
-print("Precizie: ", precision_score(test_classes_mi, predicted_labels_mi, average=None))
+print("Classification between musical instruments (brass, string, woodwind)")
+print("Precision: ", precision_score(test_classes_mi, predicted_labels_mi, average=None))
 print("Recall: ", recall_score(test_classes_mi, predicted_labels_mi, average=None))
-print("Scor F1: ", f1_score(test_classes_mi, predicted_labels_mi, average=None))
-print("Acuratete: {:.2f}\n{} corecte / {} sunete".format(accuracy_score(test_classes_mi, predicted_labels_mi, normalize=True), 
+print("F1-Score: ", f1_score(test_classes_mi, predicted_labels_mi, average=None))
+print("Accuracy: {:.2f}\n{} / {}".format(accuracy_score(test_classes_mi, predicted_labels_mi, normalize=True), 
                                         accuracy_score(test_classes_mi, predicted_labels_mi, normalize=False),
                                         test_classes_mi.shape[0]))
 print()
 
 print()
-print("Clasificarea intre femeie si barbat")
-print("Precizie: ", precision_score(test_classes_sp, predicted_labels_sp, average=None))
+print("Classification between female and male")
+print("Precision: ", precision_score(test_classes_sp, predicted_labels_sp, average=None))
 print("Recall: ", recall_score(test_classes_sp, predicted_labels_sp, average=None))
-print("Scor F1: ", f1_score(test_classes_sp, predicted_labels_sp, average=None))
-print("Acuratete: {:.2f}\n{} corecte / {} sunete ".format(accuracy_score(test_classes_sp, predicted_labels_sp, normalize=True), 
+print("F1-Score: ", f1_score(test_classes_sp, predicted_labels_sp, average=None))
+print("Accuracy: {:.2f}\n{} / {} ".format(accuracy_score(test_classes_sp, predicted_labels_sp, normalize=True), 
                                         accuracy_score(test_classes_sp, predicted_labels_sp, normalize=False),
                                         test_classes_sp.shape[0]))
 print()
 
 plt.close('all')
 
-#cnf_matrix = confusion_matrix(test_classes, predicted_labels)
-#plt.figure(1, figsize=(5,5))
-#plot_confusion_matrix(cnf_matrix, classes=all_labelencoder.classes_, title='Confusion matrix (speech - instruments)')
-#
-#cnf_matrix = confusion_matrix(test_classes_mi, predicted_labels_mi)
-#plt.figure(2, figsize=(5,5))
-#plot_confusion_matrix(cnf_matrix, classes=mi_labelencoder.classes_, title='Confusion matrix (brass - string - woodwind)')
-#
-#cnf_matrix = confusion_matrix(test_classes_sp, predicted_labels_sp)
-#plt.figure(3, figsize=(5,5))
-#plot_confusion_matrix(cnf_matrix, classes=sp_labelencoder.classes_, title='Confusion matrix (male - female)')
+cnf_matrix = confusion_matrix(test_classes, predicted_labels)
+plt.figure(1, figsize=(5,5))
+plot_confusion_matrix(cnf_matrix, classes=all_labelencoder.classes_, title='Confusion matrix (speech - instruments)')
+
+cnf_matrix = confusion_matrix(test_classes_mi, predicted_labels_mi)
+plt.figure(2, figsize=(5,5))
+plot_confusion_matrix(cnf_matrix, classes=mi_labelencoder.classes_, title='Confusion matrix (brass - string - woodwind)')
+
+cnf_matrix = confusion_matrix(test_classes_sp, predicted_labels_sp)
+plt.figure(3, figsize=(5,5))
+plot_confusion_matrix(cnf_matrix, classes=sp_labelencoder.classes_, title='Confusion matrix (male - female)')
 
 thr = None
 result = "Wait for start recognition"
