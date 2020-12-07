@@ -14,7 +14,7 @@ f.truncate(0)
 f.close()
 
 os.chdir('/home/apopa/Gitroot/Sound-Recognition-System/srcPy')
-os.system('gnome-terminal -- bash -c "sudo minicom -b 921600 -D /dev/ttyACM0 -C /home/apopa/Gitroot/Sound-Recognition-System/SerialData; exec bash"')
+os.system('gnome-terminal -- bash -c "minicom -b 921600 -D /dev/ttyACM0 -C /home/apopa/Gitroot/Sound-Recognition-System/SerialData; exec bash"')
 classification_algorithm = None
 
 def plot_MAD():
