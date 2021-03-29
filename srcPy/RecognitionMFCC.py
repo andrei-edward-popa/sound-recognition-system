@@ -21,7 +21,7 @@ class Constants:
     m_mfcc = 13
     m_width = 7
 
-path_to_dataset = './dataset/'
+path_to_dataset = '../dataset/'
 dataset_fname = 'dataset.csv'
 
 df = pd.read_csv(path_to_dataset + dataset_fname)

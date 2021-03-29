@@ -10,6 +10,24 @@ from MPEG7Features import computeFilterBank
 from FeatureExtractor import FeatureExtractor
 
 class Constants:
+    """
+    A storage for constants.
+     
+    Attributes
+    ----------
+    
+    m_fftPoints : int > 0
+        Total number of FFT coefficients to compute.
+    m_sampleRate : int > 0
+        Sample rate of signals.
+    m_nfilt : int > 0
+        Number of filters from MFCC filter bank.
+        
+    Methods
+    -------
+    
+    None
+    """
     m_fftPoints = 512
     m_sampleRate = 16000
     m_nfilt = 40

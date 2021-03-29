@@ -388,6 +388,19 @@ class FeatureExtractor:
             currentFrame += 1
             
     def computeMFCC(self, n_ceps=13, cep_lifter=22):
+        """
+        Compute MFCC coefficients for all individual frames.
+        The results are written in m_MFCC.
+        
+        Parameters
+        ----------
+        
+        n_ceps : int > 0, optional (default : 13)
+            Number of cepstral coefficients to keep.
+        cep_lifter : int > 0, optional (default : 22)
+            Cepstral lifter coefficient.
+        """
+        
         filter_banks = np.dot(self.m_powerSpectrum, self.m_fbank.T) + self.m_delta
         filter_banks = 10 * np.log10(filter_banks)
         self.m_MFCC = dct(filter_banks, type=2, axis=1, norm='ortho')[:, 1:(n_ceps + 1)]
@@ -396,6 +409,17 @@ class FeatureExtractor:
         self.m_MFCC *= lift
         
     def computeDMFCC(self, n_ceps=13):
+        """
+        Compute DMFCC coefficients for all individual frames.
+        The results are written in m_DMFCC.
+        
+        Parameters
+        ----------
+        
+        n_ceps : int > 0, optional (default : 13)
+            Number of cepstral coefficients to keep.
+        """
+        
         FDC1 = np.array([1/280, -4/105, 1/5, -4/5, 0, 4/5, -1/5, 4/105, -1/280])
         for i in range(len(self.m_MFCC)):
             for j in range(n_ceps):
@@ -407,6 +431,17 @@ class FeatureExtractor:
         self.m_DMFCC = self.m_DMFCC.reshape(len(self.m_MFCC), n_ceps)
         
     def computeDDMFCC(self, n_ceps=13):
+        """
+        Compute DDMFCC coefficients for all individual frames.
+        The results are written in m_DDMFCC.
+        
+        Parameters
+        ----------
+        
+        n_ceps : int > 0, optional (default : 13)
+            Number of cepstral coefficients to keep.
+        """
+        
         FDC2 = np.array([-1/560, 8/315, -1/5, 8/5, -205/72, 8/5, -1/5, 8/315, -1/560])
         for i in range(len(self.m_MFCC)):
             for j in range(n_ceps):
