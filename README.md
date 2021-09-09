@@ -1,2 +1,0 @@
-# Sound Recognition System
-
