@@ -1,0 +1,26 @@
+00:10:18 **** Incremental Build of configuration Debug for project frdmk66f_sai_peripheral ****
+make -r -j8 all 
+Building file: ../source/playbackSineWave.c
+Invoking: MCU C Compiler
+arm-none-eabi-gcc -std=gnu99 -D__REDLIB__ -DCPU_MK66FN2M0VMD18 -DCPU_MK66FN2M0VMD18_cm4 -DARM_MATH_CM4 -DPRINTF_FLOAT_ENABLE=1 -DFRDM_K66F -DFREEDOM -DSDK_I2C_BASED_COMPONENT_USED=1 -DBOARD_USE_CODEC=1 -DCODEC_DA7212_ENABLE -DSERIAL_PORT_TYPE_UART=1 -DSDK_DEBUGCONSOLE=0 -D__MCUXPRESSO -D__USE_CMSIS -DDEBUG -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/board" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/source" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/drivers" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/device" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/CMSIS" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/codec" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/component/i2c" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/fatfs/source" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/fatfs/source/fsl_ram_disk" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/fatfs/source/fsl_sd_disk" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/sdmmc/inc" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/utilities" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/component/serial_manager" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/component/lists" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/component/uart" -I"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/sdmmc/port" -O1 -fno-common -g3 -Wall -c  -ffunction-sections  -fdata-sections  -ffreestanding  -fno-builtin -fmacro-prefix-map="../source/"=. -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -D__REDLIB__ -fstack-usage -specs=redlib.specs -MMD -MP -MF"source/playbackSineWave.d" -MT"source/playbackSineWave.o" -MT"source/playbackSineWave.d" -o "source/playbackSineWave.o" "../source/playbackSineWave.c"
+Finished building: ../source/playbackSineWave.c
+ 
+Building target: frdmk66f_sai_peripheral.axf
+Invoking: MCU Linker
+arm-none-eabi-gcc -nostdlib -L"/home/apopa/Documents/MCUXpresso_11.1.1_3241/workspace/frdmk66f_sai_peripheral/libs" -Xlinker -Map="frdmk66f_sai_peripheral.map" -Xlinker --gc-sections -Xlinker -print-memory-usage -Xlinker --sort-section=alignment -Xlinker --cref -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -T frdmk66f_sai_peripheral_Debug.ld -o "frdmk66f_sai_peripheral.axf"  ./utilities/fsl_assert.o ./utilities/fsl_debug_console.o ./utilities/fsl_str.o  ./startup/startup_mk66f18.o  ./source/playbackSineWave.o ./source/recordPlayback.o ./source/recordtoSdcard.o ./source/sai_peripheral.o ./source/semihost_hardfault.o  ./sdmmc/src/fsl_sd.o ./sdmmc/src/fsl_sdmmc_common.o  ./sdmmc/port/fsl_sdmmc_event.o ./sdmmc/port/fsl_sdmmc_host.o  ./fatfs/source/fsl_sd_disk/fsl_sd_disk.o  ./fatfs/source/fsl_ram_disk/fsl_ram_disk.o  ./fatfs/source/diskio.o ./fatfs/source/ff.o ./fatfs/source/ffsystem.o ./fatfs/source/ffunicode.o  ./drivers/fsl_clock.o ./drivers/fsl_common.o ./drivers/fsl_dmamux.o ./drivers/fsl_edma.o ./drivers/fsl_ftfx_cache.o ./drivers/fsl_ftfx_controller.o ./drivers/fsl_ftfx_flash.o ./drivers/fsl_ftfx_flexnvm.o ./drivers/fsl_gpio.o ./drivers/fsl_i2c.o ./drivers/fsl_lpuart.o ./drivers/fsl_sai.o ./drivers/fsl_sai_edma.o ./drivers/fsl_sdhc.o ./drivers/fsl_smc.o ./drivers/fsl_sysmpu.o ./drivers/fsl_uart.o  ./device/system_MK66F18.o  ./component/uart/uart_adapter.o  ./component/serial_manager/serial_manager.o ./component/serial_manager/serial_port_uart.o  ./component/lists/generic_list.o  ./component/i2c/i2c_adapter.o  ./codec/fsl_codec_adapter.o ./codec/fsl_codec_common.o ./codec/fsl_codec_i2c.o ./codec/fsl_dialog7212.o  ./board/board.o ./board/clock_config.o ./board/peripherals.o ./board/pin_mux.o   -larm_cortexM4lf_math
+Memory region         Used Size  Region Size  %age Used
+   PROGRAM_FLASH:       89464 B         2 MB      4.27%
+      SRAM_UPPER:       16360 B       192 KB      8.32%
+      SRAM_LOWER:        3680 B        64 KB      5.62%
+        FLEX_RAM:          0 GB         4 KB      0.00%
+Finished building target: frdmk66f_sai_peripheral.axf
+ 
+make --no-print-directory post-build
+Performing post-build steps
+arm-none-eabi-size "frdmk66f_sai_peripheral.axf"; # arm-none-eabi-objcopy -v -O binary "frdmk66f_sai_peripheral.axf" "frdmk66f_sai_peripheral.bin" ; # checksum -p MK66FN2M0xxx18 -d "frdmk66f_sai_peripheral.bin";
+   text	   data	    bss	    dec	    hex	filename
+  89336	    128	  19912	 109376	  1ab40	frdmk66f_sai_peripheral.axf
+ 
+
+00:10:20 Build Finished. 0 errors, 0 warnings. (took 1s.389ms)
+

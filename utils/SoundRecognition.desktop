@@ -1,0 +1,7 @@
+[Desktop Entry]
+Version=1.0
+Name=Sound\nrecognition
+Exec=python3 "/home/apopa/Gitroot/Sound-Recognition-System/srcPy/GUI.py"
+Terminal=true
+Icon=/home/apopa/Gitroot/Sound-Recognition-System/utils/images/icon.png
+Type=Application

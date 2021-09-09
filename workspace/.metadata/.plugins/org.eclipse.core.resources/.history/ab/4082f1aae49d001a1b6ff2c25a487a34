@@ -1,0 +1,19 @@
+#ifndef FEATURES_H_
+#define FEATURES_H_
+
+#include <arm_math.h>
+#include <stdlib.h>
+#include "structures.h"
+
+void compute_RFFT_mag_f32(arm_rfft_instance_f32*, float32_t*, float32_t*, u32);
+s32 leftmost_bit(u32);
+q31_t div32_taylor(q31_t, q31_t, u16);
+void compute_Spectral_Centroid_Spread(float32_t*, float32_t*, float32_t*, float32_t*, u32);
+void compute_Zero_Crossing_Rate(float32_t*, float32_t*, u32);
+void compute_Spectral_Flux(float32_t*, float32_t*, float32_t*, u32);
+void compute_Spectral_Rolloff(float32_t*, float32_t*, float32_t, u32);
+void compute_Energy_Entropy(float32_t*, float32_t*, u32, u32);
+void normalize_signal(float32_t*, float32_t*, u32);
+float32_t array_sum(float32_t*, u32);
+
+#endif

@@ -1,0 +1,45 @@
+#ifndef _STRUCTURES_H_
+#define _STRUCTURES_H_
+
+typedef uint8_t u8;
+typedef int16_t s16;
+typedef uint16_t u16;
+typedef int32_t s32;
+typedef uint32_t u32;
+typedef int64_t s64;
+typedef uint64_t u64;
+
+#define FFT_LEN 512
+#define HALF_FFT_LEN (FFT_LEN / 2)
+#define FRAME_LENGTH 480
+#define SAMPLE_RATE 16000
+#define DELTA 0.0000000001
+#define LOG_10_2 0.3010299957
+#define COLLECT_TIME (SAMPLE_RATE / FRAME_LENGTH / 2) // 480 ms
+#define SAD_THRESHOLD1 0.0000007
+#define SAD_THRESHOLD2 0.015
+#define MFCC_CONSTANT1 0.158113883
+#define MFCC_CONSTANT2 0.2236067977
+#define NUMBER_OF_FILTERS 40
+#define NUMBER_OF_CEPSTRALS 13
+#define ROLLOFF_RATIO 0.5
+#define ENTROPY_CUT 20
+#define PITCH_EP 0.04
+
+typedef struct signal_buf_t {
+	float32_t signal[FRAME_LENGTH];
+	float32_t magnitude[2 * FFT_LEN];
+	float32_t power_spectrum[FFT_LEN];
+} signal_buf;
+
+typedef struct features_ctx {
+	signal_buf x;
+	float32_t m_spectralCentroid, m_spectralSpread, m_zeroCrossingRate, m_spectralFlux, m_spectralRolloff, m_energyEntropy, m_energy;
+	float32_t s_spectralCentroid, s_spectralSpread, s_zeroCrossingRate, s_spectralFlux, s_spectralRolloff, s_energyEntropy, s_energy;
+	float32_t SC[COLLECT_TIME], SS[COLLECT_TIME], ZCR[COLLECT_TIME], SF[COLLECT_TIME], SR[COLLECT_TIME], EE[COLLECT_TIME], EN[COLLECT_TIME];
+	float32_t SCR[3 * COLLECT_TIME];
+	float32_t PITCH[COLLECT_TIME];
+	float32_t m_MFCC[NUMBER_OF_CEPSTRALS];
+} features;
+
+#endif

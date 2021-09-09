@@ -1,0 +1,258 @@
+#include "features.h"
+#include <stdio.h>
+
+extern const float32_t MFCC_Lifter[];
+
+s32 leftmost_bit(u32 number)
+{
+	/**
+	* @brief This function finds the index of the most left set bit of a positive integer
+	* param[in] a positive integer
+	* return the index of the most left set bit
+	*/
+
+	s32 i = 0;
+
+	if (number == 0) {
+		return -1;
+	}
+	if (number & 0xFFFF0000) {
+		number &= 0xFFFF0000;
+		i += 16;
+	}
+	if (number & 0xFF00FF00) {
+		number &= 0xFF00FF00;
+		i += 8;
+	}
+	if (number & 0xF0F0F0F0) {
+		number &= 0xF0F0F0F0;
+		i += 4;
+	}
+	if (number & 0xCCCCCCCC) {
+		number &= 0xCCCCCCCC;
+		i += 2;
+	}
+	if (number & 0xAAAAAAAA) {
+		number &= 0xAAAAAAAA;
+		i += 1;
+	}
+	return i;
+}
+
+q31_t div32_taylor(q31_t num, q31_t den, u16 nr_terms)
+{
+	  /**
+	* @brief This function performes the division of 2 numbers using Taylor series
+	* param[in] the numerator of the fraction
+	* param[in] the denominator of the fraction
+	* param[in] number of iterations
+	* return the result of the division
+	*/
+
+	q31_t powers[nr_terms];
+	memset(powers, 0, sizeof(q31_t));
+	powers[0] = 0x7fffffff;
+	q63_t result = 0;
+	q31_t sh;
+	register uint16_t i = 0;
+
+	if(den < 0) {
+		num = -num;
+		den = -den;
+	}
+
+	if(num == 0) {
+		result = 0;
+	}
+	else if(abs(num) > abs(den)) {
+		if(num > 0 && den > 0) {
+		  result = 0x7fffffff;
+		} else {
+		  result = 0x80000000;
+		}
+	} else {
+		sh = leftmost_bit(den);
+		den = den << (30 - sh);
+		num = num << (30 - sh);
+
+		den = 0x7fffffff - den;
+
+		for(i = 1; i < nr_terms; i++) {
+		  powers[i] = (q31_t)(((q63_t)powers[i - 1] * (q63_t)den) >> 31);
+		}
+
+		for(i = 0; i < nr_terms; i++) {
+		  result  = result + (q63_t) powers[i];
+		}
+
+		result = ((result * (q63_t)num) >> 31);
+	}
+	return (q31_t) result;
+}
+
+void compute_RFFT_mag_f32(arm_rfft_instance_f32* rfft_instance, float32_t* pSrc, float32_t* FFT, float32_t* powerSpectrum, u32 fftLenReal) {
+	arm_rfft_f32(rfft_instance, pSrc, FFT);
+	arm_cmplx_mag_squared_f32(FFT, powerSpectrum, fftLenReal);
+	arm_cmplx_mag_f32(FFT, FFT, fftLenReal);
+	for (u32 i = 0; i < fftLenReal; i++) {
+		FFT[i] /= fftLenReal;
+		powerSpectrum[i] /= fftLenReal;
+	}
+}
+
+float32_t array_sum(float32_t* pSrc, u32 len) {
+	float32_t result = 0;
+	for (u32 i = 0; i < len; i++) {
+		result += pSrc[i];
+	}
+	return result;
+}
+
+void compute_Spectral_Centroid_Spread(float32_t* frequencies, float32_t* FFT_Magnitude, float32_t* dstCentroid, float32_t* dstSpread, u32 len) {
+	float32_t fftSum = array_sum(FFT_Magnitude, len);
+	float32_t freqTfft[len];
+	arm_mult_f32(frequencies, FFT_Magnitude, freqTfft, len);
+	*dstCentroid = 2 * array_sum(freqTfft, len) / ((fftSum + DELTA) * SAMPLE_RATE);
+	for (u32 i = 0; i < len; i++) {
+		freqTfft[i] = powf(frequencies[i] - (*dstCentroid), 2);
+	}
+	arm_mult_f32(freqTfft, FFT_Magnitude, freqTfft, len);
+	*dstSpread = 2 * sqrtf(array_sum(freqTfft, len) / fftSum) / SAMPLE_RATE;
+}
+
+void compute_Zero_Crossing_Rate(float32_t* pSrc, float32_t* dstZCR, u32 len) {
+	s32 sign_diff[len];
+	s32 zeros = 0;
+	sign_diff[0] = (pSrc[0] > 0) - (pSrc[0] < 0);
+	for (u32 i = 1; i < len; i++) {
+		sign_diff[i] = (pSrc[i] > 0.0f) - (pSrc[i] < 0.0f);
+		sign_diff[i - 1] = abs(sign_diff[i] - sign_diff[i - 1]);
+		zeros += sign_diff[i - 1];
+	}
+	*dstZCR = (float32_t) zeros / ((len - 1) << 1);
+}
+
+void compute_Spectral_Flux(float32_t* FFT_Magnitude, float32_t* Prev_FFT_Magnitude, float32_t* dstFlux, u32 len) {
+	float32_t diff[len];
+	arm_sub_f32(FFT_Magnitude, Prev_FFT_Magnitude, diff, len);
+	for (u32 i = 0; i < len; i++) {
+		diff[i] = powf(diff[i], 2);
+	}
+	*dstFlux = array_sum(diff, len);
+}
+
+void compute_Spectral_Rolloff(float32_t* FFT_Magnitude, float32_t* dstRolloff, float32_t ratio, u32 len) {
+	float32_t squared_FFT = powf(FFT_Magnitude[0], 2);
+	float32_t spectrumEnergy = squared_FFT;
+	float32_t cumsum[len];
+	cumsum[0] = squared_FFT;
+	for (u32 i = 1; i < len; i++) {
+		squared_FFT = powf(FFT_Magnitude[i], 2);
+		cumsum[i] = cumsum[i - 1] + squared_FFT;
+		spectrumEnergy += squared_FFT;
+	}
+	float32_t threshold = spectrumEnergy * ratio;
+	s32 index = -1;
+	for (u32 i = 0; i < len; i++) {
+		if (cumsum[i] > threshold) {
+			index = i;
+			break;
+		}
+	}
+	if (index != -1) {
+		*dstRolloff = (index << 1) / (float32_t) len;
+	} else {
+		*dstRolloff = 0.0f;
+	}
+}
+
+void compute_Energy_Entropy(float32_t* pSrc, float32_t* dstEntropy, u32 cut, u32 len) {
+	*dstEntropy = 0;
+	u32 subFramesLength = len / cut;
+	float32_t subFrames[subFramesLength][cut];
+	float32_t prob[cut];
+	float32_t energyFrame = 0;
+	for (u32 i = 0; i < len; i++) {
+		subFrames[i % subFramesLength][i / subFramesLength] = powf(pSrc[i], 2);
+	}
+	for (u32 i = 0; i < cut; i++) {
+		prob[i] = 0;
+		for (u32 j = 0; j < subFramesLength; j++) {
+			energyFrame += subFrames[j][i];
+			prob[i] += subFrames[j][i];
+		}
+	}
+	for (u32 i = 0; i < cut; i++) {
+		prob[i] /= (energyFrame + DELTA);
+		*dstEntropy -= (prob[i] * log10f(prob[i] + DELTA) / LOG_10_2);
+	}
+}
+
+void normalize_signal(float32_t* pSrc, float32_t* pDst, u32 len) {
+	float32_t mean, rms, value;
+	float32_t temp[len];
+	arm_mean_f32(pSrc, len, &mean);
+	for (u32 i = 0; i < len; i++) {
+		temp[i] = powf(pSrc[i], 2);
+	}
+	rms = sqrtf(array_sum(temp, len) / len);
+	for (u32 i = 0; i < len; i++) {
+		pDst[i] = (pSrc[i] - mean) / (rms + DELTA);
+	}
+}
+
+void compute_Energy(float32_t* pSrc, float32_t* dstEnergy, u32 len) {
+	*dstEnergy = 0;
+	for (u32 i = 0; i < len; i++) {
+		*dstEnergy += powf(pSrc[i], 2);
+	}
+	*dstEnergy /= len;
+}
+
+void compute_Filter_Bank(float32_t** fbank, u32 fftPoints, u32 sampleRate, u32 nfilt) {
+	float32_t low_freq_mel = 0.0f;
+	float32_t high_freq_mel = 2595 * log10f(1.0f + (sampleRate / 2) / (float32_t)700);
+	float32_t freq_mel_points[nfilt + 2], freq_hz_points[nfilt + 2];
+	u32 bins[nfilt + 2];
+	float32_t step = (high_freq_mel - low_freq_mel) / (nfilt + 1);
+	for (u32 i = 0; i < nfilt + 2; i++) {
+		freq_mel_points[i] = low_freq_mel + i * step;
+		freq_hz_points[i] = 700 * (powf(10, freq_mel_points[i] / 2595) - 1);
+		bins[i] = (u32)(fftPoints * freq_hz_points[i] / sampleRate);
+	}
+	u32 f_left, f_current, f_right;
+	for (u32 i = 1; i < nfilt + 1; i++) {
+		f_left = bins[i - 1];
+		f_current = bins[i];
+		f_right = bins[i + 1];
+		for (u32 j = f_left; j < f_current; j++) {
+			fbank[i - 1][j] = (float32_t)(j - bins[i - 1]) / (bins[i] - bins[i - 1]);
+		}
+		for (u32 j = f_current; j < f_right; j++) {
+			fbank[i - 1][j] = (float32_t)(bins[i + 1] - j) / (bins[i + 1] - bins[i]);
+		}
+	}
+	for (u32 i = 0; i < nfilt; i++) {
+		float32_t temp = 2.0f / (freq_hz_points[i + 2] - freq_hz_points[i]);
+		for (u32 j = 0; j < fftPoints / 2; j++) {
+			fbank[i][j] *= temp;
+		}
+	}
+}
+
+void compute_MFCC(float32_t* powerSpectrum, float32_t** fbank, float32_t* mfcc, u32 halfFFTPoints, u32 n_filt, u32 n_ceps) {
+	float32_t pre_mfcc[n_filt];
+	for (u32 i = 0; i < n_filt; i++) {
+		arm_dot_prod_f32(powerSpectrum, fbank[i], halfFFTPoints, &pre_mfcc[i]);
+	}
+	for (u32 i = 0; i < n_filt; i++) {
+		pre_mfcc[i] = 20 * log10f(pre_mfcc[i] + DELTA);
+	}
+	for (u32 i = 0; i < n_ceps; i++) {
+		float32_t sum = 0;
+		for (u32 j = 0; j < n_filt; j++) {
+			sum += pre_mfcc[j] * arm_cos_f32(PI * i * (2 * j + 1) / (2 * n_filt));
+		}
+		mfcc[i] = sum * MFCC_CONSTANT * MFCC_Lifter[i];
+	}
+}

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename resource &apos;Audio_Signal_Feature_Extractor_Test/source_transfer/featuers.h&apos; to &apos;features.h&apos;" description="Rename resource &apos;featuers.h&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="source_transfer/featuers.h" name="features.h" stamp="1589639230511" updateReferences="true"/>
+</session>

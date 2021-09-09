@@ -1,0 +1,6 @@
+15:38:39 **** Incremental Build of configuration Debug for project frdmk66f_lwip_udpecho_bm ****
+make -r -j8 all 
+make: Nothing to be done for 'all'.
+
+15:38:40 Build Finished. 0 errors, 0 warnings. (took 634ms)
+

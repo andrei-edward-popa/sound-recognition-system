@@ -1,0 +1,2 @@
+recordtoSdcard.c:38:6:wav_header	16	static
+recordtoSdcard.c:89:6:RecordSDCard	112	static
